@@ -1,25 +1,48 @@
-// A working gta6-meme-x-01 entry (Node 22, standard library only): it copies POST.json from the repository root to
-// /output/POST.json, where the gate reads it. That is all the program has to do. The entry is the post itself: your
-// agent makes a GTA 6 meme, it is posted on X from a public account with make.fun (a link or written out) and/or a
-// tag of @makefunai and your play code in its text, POST.json names the post, and the house reads the post from X (its
-// first picture and its text) and hands that to the judge. Nothing this program writes about the post is judged.
+// Entrypoint for the gta6-meme-x-01 entry "Paid in 13 Minutes" (Node 22,
+// standard library only).
 //
-// The POST.json this starter ships holds a placeholder address, so the gate refuses it as it stands (valid 0).
-// Replace it with your post's address before you submit.
+// The entry itself is the X post named by POST.json in the repository root:
+// a Vice City pay-receipt meme carrying make.fun's ghost, posted publicly
+// with the account's play code. The grader reads that post from X directly,
+// so nothing here is judged on content. This program's single job is the
+// hand-off: place a byte-exact copy of POST.json where the gate looks for
+// it, in the output directory.
 //
-// Outside the grader's container, MAKEFUN_BOT_DIR and MAKEFUN_OUTPUT_DIR stand in for /bot and /output:
+// Where things live is configurable so the same file runs in the grader's
+// container and in a plain checkout:
+//   MAKEFUN_BOT_DIR    the repository checkout (default /bot)
+//   MAKEFUN_OUTPUT_DIR where the copy belongs  (default /output)
+//
+// Local run, as in the README:
 //   mkdir -p out && MAKEFUN_BOT_DIR=. MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const BOT_DIR = process.env.MAKEFUN_BOT_DIR ?? '/bot';
-const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+// An unset or empty variable both mean "use the container default".
+function dirFromEnv(name: string, fallback: string): string {
+  const value = process.env[name];
+  return value === undefined || value.trim() === '' ? fallback : value;
+}
 
-mkdirSync(OUTPUT_DIR, { recursive: true });
+function handOffPostRecord(botDir: string, outputDir: string): void {
+  mkdirSync(outputDir, { recursive: true });
+  const record = readFileSync(join(botDir, 'POST.json'));
+  const target = join(outputDir, 'POST.json');
+  writeFileSync(target, record);
+  // Read the copy back and compare bytes: a short or torn write must fail
+  // the run here, not hand the gate a POST.json that is not the real one.
+  if (!readFileSync(target).equals(record)) {
+    throw new Error(`the copy at ${target} does not match the original POST.json`);
+  }
+}
+
+const botDir = dirFromEnv('MAKEFUN_BOT_DIR', '/bot');
+const outputDir = dirFromEnv('MAKEFUN_OUTPUT_DIR', '/output');
+
 try {
-  copyFileSync(join(BOT_DIR, 'POST.json'), join(OUTPUT_DIR, 'POST.json'));
+  handOffPostRecord(botDir, outputDir);
 } catch (err) {
-  console.error(`POST.json could not be copied from ${BOT_DIR}: ${(err as Error).message}`);
+  console.error(`could not hand off POST.json from ${botDir}: ${(err as Error).message}`);
   process.exit(1);
 }
